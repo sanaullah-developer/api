@@ -1,10 +1,10 @@
 # this is just a demo code of why pydantic is used, actually we will need
 # a database but i dont want to make it complex so we will just use variable
 
-def insert_patient_data(name,age):
-    print(name)
-    print(age)
-    print("inserted into database")
+# def insert_patient_data(name,age):
+#     print(name)
+#     print(age)
+#     print("inserted into database")
 
 # now there is a junior programmer who can only see the signature of the function
 # he does not know what the datatypes actually required are
@@ -17,38 +17,63 @@ def insert_patient_data(name,age):
 
 # but we can write it like this but this is for information purposes for another programmer to use
 # this will not generate error even if we pass wrong datatypes
-def insert_patient_data1(name: str,age: int):
-    print(name)
-    print(age)
-    print("inserted into database")
+# def insert_patient_data1(name: str,age: int):
+#     print(name)
+#     print(age)
+#     print("inserted into database")
 
 #insert_patient_data1("sanaullah","thirty")
 
 # we can also try another thing by validating the datatypes with the help of if statements like following
 # and if we pass wrong datatype then it will raise error
-def insert_patient_data2(name: str,age: int):
-    if type(name)==str and type(age)==int:
-        print(name)
-        print(age)
-        print("inserted into database")
-    else:
-        raise TypeError("Incorrect data type")
+# def insert_patient_data2(name: str,age: int):
+#     if type(name)==str and type(age)==int:
+#         print(name)
+#         print(age)
+#         print("inserted into database")
+#     else:
+#         raise TypeError("Incorrect data type")
 
-insert_patient_data2("sanaullah",30)
+#insert_patient_data2("sanaullah",30)
 
 # we can say that this approach is good but it is not scallable because our code become very messy if we do it
 # accross multiple 
 
 # now this is type validation but we also have to do data validation
-def insert_patient_data3(name: str,age: int):
-    if age < 0:
-        raise ValueError("Age can be negative")
-    if type(name)==str and type(age)==int:
-        print(name)
-        print(age)
-        print("inserted into database")
-    else:
-        raise TypeError("Incorrect data type")
+# def insert_patient_data3(name: str,age: int):
+#     if age < 0:
+#         raise ValueError("Age can be negative")
+#     if type(name)==str and type(age)==int:
+#         print(name)
+#         print(age)
+#         print("inserted into database")
+#     else:
+#         raise TypeError("Incorrect data type")
 
 # now we can see how messy it can become and this is exactly the problem that pydantice is solving and we 
 # dont have to do all of that manually
+
+
+
+#now lets do it in pydantic
+
+from pydantic import BaseModel, Field
+from typing import List, Dict
+class Patient(BaseModel):
+    name: str
+    age: int = Field(gt=0, lt=120)  # must be > 0 and < 120
+    weight: float
+    married: bool
+    allergies: List[str]
+    contact_details: Dict[str,str]
+
+def insert_patient_data(patient: Patient):
+    print(patient.name)
+    print(patient.age)
+    print("inserted into database")
+
+# Usage:
+patient1 = Patient(name="sanaullah", age=30, weight=70, married=False, allergies=['pollen','dust'], contact={'email':'abc@gmail.com'} )   # works fine
+insert_patient_data(patient1)
+
+patient2 = Patient(name="sanaullah", age="thirty")  # raises ValidationError automatically
