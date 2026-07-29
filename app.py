@@ -1,55 +1,90 @@
-from fastapi import FastAPI, Path, HTTPException, Query
-import json
-from pydantic import BaseModel, Field
-from typing import Annotated, Literal
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, computed_field
+from typing import Literal, Annotated
+import pickle
+import pandas as pd
+
+# import the ml model
+with open('model.pkl', 'rb') as f:
+    model = pickle.load(f)
 
 app = FastAPI()
 
-class Patient(BaseModel):
-    id: Annotated[str, Field(..., description="id of the patient")]
-    name: Annotated[str, Field(..., description= " nameo fthe patient")]
-    city: Annotated[str, Field(..., description= "city where teh patient lives")]
-    age : Annotated[int, Field(..., gt=0, lt=120, description="Age of the patient")]
-    gender: Annotated[Literal['Male','Female','Others'], Field(..., description= "Gender of the patient")]
-    height: Annotated[float,Field(..., gt=0, description= 'Height of the patient in mtr')]
-    weight: Annotated[float, Field(..., gt=0, description= "weight of patient in kgs")]
+tier_1_cities = ["Mumbai", "Delhi", "Bangalore", "Chennai", "Kolkata", "Hyderabad", "Pune"]
+tier_2_cities = [
+    "Jaipur", "Chandigarh", "Indore", "Lucknow", "Patna", "Ranchi", "Visakhapatnam", "Coimbatore",
+    "Bhopal", "Nagpur", "Vadodara", "Surat", "Rajkot", "Jodhpur", "Raipur", "Amritsar", "Varanasi",
+    "Agra", "Dehradun", "Mysore", "Jabalpur", "Guwahati", "Thiruvananthapuram", "Ludhiana", "Nashik",
+    "Allahabad", "Udaipur", "Aurangabad", "Hubli", "Belgaum", "Salem", "Vijayawada", "Tiruchirappalli",
+    "Bhavnagar", "Gwalior", "Dhanbad", "Bareilly", "Aligarh", "Gaya", "Kozhikode", "Warangal",
+    "Kolhapur", "Bilaspur", "Jalandhar", "Noida", "Guntur", "Asansol", "Siliguri"
+]
 
-def load_data():
-    with open('patients.json','r') as f:
-        data = json.load(f)
-    return data
-@app.get('/')
-def hello():
-    return {'message':'Patient management system API'}
+# pydantic model to validate incoming data
+class UserInput(BaseModel):
 
-@app.get('/view')
-def view():
-    data = load_data()
-    return data
+    age: Annotated[int, Field(..., gt=0, lt=120, description='Age of the user')]
+    weight: Annotated[float, Field(..., gt=0, description='Weight of the user')]
+    height: Annotated[float, Field(..., gt=0, lt=2.5, description='Height of the user')]
+    income_lpa: Annotated[float, Field(..., gt=0, description='Annual salary of the user in lpa')]
+    smoker: Annotated[bool, Field(..., description='Is user a smoker')]
+    city: Annotated[str, Field(..., description='The city that the user belongs to')]
+    occupation: Annotated[Literal['retired', 'freelancer', 'student', 'government_job',
+       'business_owner', 'unemployed', 'private_job'], Field(..., description='Occupation of the user')]
+    
+    @computed_field
+    @property
+    def bmi(self) -> float:
+        return self.weight/(self.height**2)
+    
+    @computed_field
+    @property
+    def lifestyle_risk(self) -> str:
+        if self.smoker and self.bmi > 30:
+            return "high"
+        elif self.smoker or self.bmi > 27:
+            return "medium"
+        else:
+            return "low"
+        
+    @computed_field
+    @property
+    def age_group(self) -> str:
+        if self.age < 25:
+            return "young"
+        elif self.age < 45:
+            return "adult"
+        elif self.age < 60:
+            return "middle_aged"
+        return "senior"
+    
+    @computed_field
+    @property
+    def city_tier(self) -> int:
+        if self.city in tier_1_cities:
+            return 1
+        elif self.city in tier_2_cities:
+            return 2
+        else:
+            return 3
 
-@app.get('/patient/{patient_id}')
-def view_patient(patient_id:str = Path(..., description = 'Id of the patient in the database',example='P001')):
-    data = load_data()
+@app.post('/predict')
+def predict_premium(data: UserInput):
 
-    if patient_id in data:
-        return data[patient_id]
-    raise HTTPException(status_code= 404, detail= 'Patient not found')
+    input_df = pd.DataFrame([{
+        'bmi': data.bmi,
+        'age_group': data.age_group,
+        'lifestyle_risk': data.lifestyle_risk,
+        'city_tier': data.city_tier,
+        'income_lpa': data.income_lpa,
+        'occupation': data.occupation
+    }])
 
-@app.get('/sort')
-def sort_patient(
-    sort_by: str = Query(..., description="sort on the basis of height, weight and bmi"),
-    order: str = Query("asc", description='sort in ascending or descending order')
-):
-    pass
-    valid_fields=['height','weight','bmi']
+    prediction = model.predict(input_df)[0]
 
-    if sort_by not in valid_fields:
-        raise HTTPException(status_code= 400, detail=f"invalaid field, select from {valid_fields}")
-    if order not in ['asc','desc']:
-        raise HTTPException(status_code= 400, detail="invalaid order select between asc and desc")
+    return JSONResponse(status_code=200, content={'predicted_category': prediction})
 
-    data = load_data()
-    sort_order = True if order=='desc' else False
-    sorted_data= sorted(data.values(), key=lambda x:x.get(sort_by,0),reverse=sort_order)
 
-    return sorted_data
+
+
